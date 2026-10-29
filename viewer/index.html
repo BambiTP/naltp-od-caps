@@ -5,7 +5,7 @@
         <meta http-equiv="x-ua-compatible" content="ie=edge">
         <title>TagPro Replay</title>
         <meta name="description" content="Grab the other team's flag and bring it back to yours.">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
         <meta property="og:image" content="/images/thumbnail.png">
         <meta property="og:url" content="http://tagpro.gg">
@@ -18,6 +18,7 @@
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/font-awesome.css">
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/style.css">
             <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/replay.css">
+            <link rel="stylesheet" href="./od-ui.css">
 
             <script src="./R-62bb0909b74c-z/compact/global-game.js"></script>
     <script type="text/javascript">
@@ -56,17 +57,38 @@
                         else text = new TextDecoder().decode(bytes);
                         return new Response(text, { headers: { 'X-Replay-Filename': m[1] } });
                     };
-                    var follow = Number(q.get('follow'));
-                    if (follow) var tries = setInterval(function () {
-                        if (!window.tagpro || !tagpro.replayFollowPlayer || !tagpro.players || !tagpro.players[follow]) return;
-                        tagpro.replayFollowPlayer(follow);
-                        clearInterval(tries);
-                    }, 500);
                 })();
                 tagproConfig.replaySettings = undefined;
         </script>
     </head>
     <body class="game-page">
+        <div id="od-loading">
+            <div id="od-loading-box">
+                <div id="od-loading-title"></div>
+                <div id="od-loading-status">Loading the replay...</div>
+                <button id="od-play-button" type="button" hidden>&#9654; Play</button>
+                <div id="od-rotate-hint">Turn your phone sideways for a bigger view.</div>
+            </div>
+        </div>
+        <div id="od-bar" hidden>
+            <div id="od-bar-info"></div>
+            <div id="od-bar-buttons">
+                <button id="od-cap-button" type="button" title="Back to 10 seconds before the cap">&#8634; Cap</button>
+                <button id="od-back10-button" type="button" title="Back 10 seconds">-10</button>
+                <button id="od-back2-button" type="button" title="Back 2 seconds">-2</button>
+                <button id="od-playpause-button" type="button" title="Play or pause">&#10074;&#10074;</button>
+                <button id="od-forward2-button" type="button" title="Forward 2 seconds">+2</button>
+                <button id="od-forward10-button" type="button" title="Forward 10 seconds">+10</button>
+                <select id="od-speed-select" title="Speed">
+                    <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+                    <option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option>
+                </select>
+                <button id="od-view-button" type="button" title="Whole map or follow the carrier">Whole map</button>
+                <button id="od-zoomout-button" type="button" title="Zoom out">&minus;</button>
+                <button id="od-zoomin-button" type="button" title="Zoom in">+</button>
+            </div>
+        </div>
+        <button id="od-bar-toggle" type="button" title="Show or hide the controls" hidden>&#9776;</button>
 
         <div class="hidden" id="textures">
     ""
@@ -661,5 +683,6 @@
             rdt("init", "t2_vrwbckj1", { "optOut": false, "useDecimalCurrencyValues": true, "email": "", "externalId": "" });
             rdt("track", "ViewContent");
         </script>
+        <script src="./od-ui.js"></script>
     </body>
 </html>
