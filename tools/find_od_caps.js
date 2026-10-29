@@ -194,6 +194,7 @@ for (const c of picked) {
   c.key = c.uuid.replace(/-/g, '').slice(0, 16); // the viewer's replay key (it keeps the first 16 characters)
   fs.copyFileSync(path.join(REPLAYS, c.uuid + '.ndjson.gz'), path.join(ROOT, 'replays', c.key + '.ndjson.gz'));
 }
+require('./add_links').addLinks(picked, REPLAYS, FETCH); // links to the real TagPro replay viewer
 fs.writeFileSync(path.join(ROOT, 'caps.json'), JSON.stringify({
   rules: { min_run_s: MIN_RUN_S, max_run_s: MAX_RUN_S, od_check_s: OD_CHECK_MS / 1000, od_radius_tiles: OD_RADIUS,
     chase_dist_tiles: CHASE_DIST, escape_s: ESCAPE_MS / 1000,

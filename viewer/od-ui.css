@@ -40,3 +40,10 @@ html, body { touch-action: manipulation; overscroll-behavior: none; }
   .replayBar { display: none !important; }
   .exitContainer { display: none; }
 }
+
+#od-loading-tagpro-link { display: block; margin-top: 16px; color: #8fd18f; }
+#od-loading-tagpro-link[hidden], #od-tagpro-link[hidden] { display: none; }
+#od-tagpro-link {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 4px 10px;
+  border: 1px solid #555; border-radius: 6px; background: #222; color: #8fd18f; font-size: 15px; text-decoration: none;
+}

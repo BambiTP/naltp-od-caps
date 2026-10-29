@@ -1,18 +1,50 @@
-// Loading cover, touch controls and follow / whole-map view for the TagPro replay page.
-// Address: ?replay=<key>&t=<ms to start at>&follow=<player id>&title=<text shown while loading>
+// Loading cover, touch controls and camera for the TagPro replay page.
+// Address: ?replay=<key>&t=<ms to start at>&follow=<player id>&title=<text>&tagpro=<link to the real TagPro viewer>
 // The cover stays up (sound off) until the replay is downloaded, the page's images are loaded and the
 // client has jumped to t; then it pauses there and waits for a tap on Play (which also lets phones play sound).
+//
+// Camera, from the client's renderer: the picture is scaled by (1 / tagpro.zoom) * (canvas height / 800), so at
+// any screen size zoom 1 shows 32 x 20 tiles and zoom z shows 32z x 20z. With followPlayer off the camera sits on
+// the map's centre. (The client's own whole-map zoom divides by the canvas's pixel width instead, which is wrong
+// on phones and large windows, and its "overview" mode darkens the screen, so neither is used.)
 (function () {
   var q = new URLSearchParams(location.search);
   var start = Number(q.get('t')) || 0, follow = Number(q.get('follow')) || 0, title = q.get('title') || '';
+  var tagproUrl = q.get('tagpro') || '';
   var $id = function (id) { return document.getElementById(id); };
   var cover = $id('od-loading'), status = $id('od-loading-status'), playButton = $id('od-play-button');
   var bar = $id('od-bar'), toggle = $id('od-bar-toggle'), playPause = $id('od-playpause-button');
   var viewButton = $id('od-view-button'), speedSelect = $id('od-speed-select');
   $id('od-loading-title').textContent = title;
   $id('od-bar-info').textContent = title;
+  if (/^https:\/\/tagpro\.koalabeast\.com\//.test(tagproUrl)) {
+    ['od-tagpro-link', 'od-loading-tagpro-link'].forEach(function (id) { $id(id).href = tagproUrl; $id(id).hidden = false; });
+  }
 
-  var wantedSound = null, wholeMap = true, autoFit = true, ready = false;
+  // camera: 'map' = whole map, 'follow' = follow the carrier at normal zoom
+  var camera = 'map', zoomBy = 1, wantedSound = null, ready = false;
+
+  function wholeMapZoom() {
+    var m = tagpro.map;
+    return m ? Math.max(m.length / 32, m[0].length / 20) * 1.04 : 1;
+  }
+  // put the camera where it should be; run often, because the client changes these on its own events
+  function applyCamera() {
+    var v = tagpro.viewport;
+    if (camera === 'map') {
+      v.followPlayer = false;
+      v.centerLock = true;
+      tagpro.zoom = wholeMapZoom() * zoomBy;
+    } else {
+      v.followPlayer = true;
+      v.centerLock = false;
+      tagpro.zoom = zoomBy;
+      if (follow && tagpro.playerId !== follow && tagpro.players[follow] && tagpro.replayFollowPlayer) tagpro.replayFollowPlayer(follow);
+    }
+    v.overview = false;
+    tagpro.zooming = 0;
+    viewButton.textContent = camera === 'map' ? 'Follow carrier' : 'Whole map';
+  }
 
   function seekBar() { return $id('replaySeekBar'); }
   // the client seeks when the seek bar is released (mouseup), to the bar's value
@@ -21,22 +53,6 @@
     if (!s) return;
     s.value = ms;
     window.jQuery(s).trigger('mouseup');
-  }
-  // the client's own whole-map zoom (what it shows before a game starts)
-  function fitZoom() {
-    var c = $id('viewport'), m = tagpro.map;
-    if (!c || !m) return 1;
-    return Math.max(1, 40 * m.length / c.width, 40 * m[0].length / c.height);
-  }
-  function setView(whole) {
-    wholeMap = whole;
-    autoFit = whole;
-    tagpro.viewport.followPlayer = !whole;
-    tagpro.viewport.centerLock = whole;
-    tagpro.viewport.overview = whole;
-    tagpro.zoom = whole ? fitZoom() : 1;
-    if (!whole && follow && tagpro.replayFollowPlayer) tagpro.replayFollowPlayer(follow);
-    viewButton.textContent = whole ? 'Follow carrier' : 'Whole map';
   }
 
   var waited = 0;
@@ -48,15 +64,15 @@
       return;
     }
     if (wantedSound === null) { wantedSound = t.sound; t.sound = false; } // quiet while it jumps ahead
+    applyCamera();
     var at = Number((seekBar() || {}).value) || 0;
     // the client only jumps when the target is 2+ seconds ahead of where playback is
     var jumps = start && start - (t.replayData && t.replayData.minTS || 0) >= 2500;
-    if (jumps && at < start - 1000) { status.textContent = 'Jumping to the cap...'; return; }
+    if (jumps && at < start - 1000) { status.textContent = 'Jumping to the grab...'; return; }
     if (t.replayPlayer.seeking || document.readyState !== 'complete') { status.textContent = 'Loading images and sounds...'; return; }
     clearInterval(poll);
     if (!t.replayPaused) t.replayActions.playpause();
     t.sound = false;
-    setView(true); // starts on the whole map; the button switches to following the carrier
     ready = true;
     status.textContent = 'Ready.';
     playButton.hidden = false;
@@ -77,12 +93,11 @@
     if (!ready) return;
     unlockSounds();
     tagpro.sound = wantedSound;
-    cover.hidden = true;
     cover.style.display = 'none';
     bar.hidden = false;
     toggle.hidden = false;
+    applyCamera();
     if (tagpro.replayPaused) tagpro.replayActions.playpause();
-    setView(true);
   });
 
   var act = function (name) { return function () { if (ready) tagpro.replayActions[name](); }; };
@@ -98,17 +113,16 @@
       function (a) { return Number(a.getAttribute('data-replay-speed')) === v; });
     if (link) window.jQuery(link).trigger('click');
   });
-  viewButton.addEventListener('click', function () { if (ready) setView(!wholeMap); });
-  $id('od-zoomin-button').addEventListener('click', function () { if (ready) { autoFit = false; tagpro.zoom = Math.max(0.5, tagpro.zoom / 1.25); } });
-  $id('od-zoomout-button').addEventListener('click', function () { if (ready) { autoFit = false; tagpro.zoom = Math.min(6, tagpro.zoom * 1.25); } });
+  viewButton.addEventListener('click', function () { camera = camera === 'map' ? 'follow' : 'map'; zoomBy = 1; applyCamera(); });
+  $id('od-zoomin-button').addEventListener('click', function () { zoomBy = Math.max(0.3, zoomBy / 1.25); applyCamera(); });
+  $id('od-zoomout-button').addEventListener('click', function () { zoomBy = Math.min(4, zoomBy * 1.25); applyCamera(); });
   toggle.addEventListener('click', function () { bar.hidden = !bar.hidden; });
 
-  // keep the play / pause button and speed list in step with the client (keyboard keys change them too)
+  // keep the camera, play / pause button and speed list right (the client and keyboard keys change them too)
   setInterval(function () {
     if (!ready) return;
+    applyCamera();
     playPause.innerHTML = tagpro.replayPaused ? '&#9654;' : '&#10074;&#10074;';
     if (Number(speedSelect.value) !== tagpro.replaySpeed) speedSelect.value = String(tagpro.replaySpeed);
-    if (wholeMap) { tagpro.viewport.centerLock = true; tagpro.viewport.followPlayer = false; tagpro.viewport.overview = true; }
-    if (autoFit) tagpro.zoom = fitZoom(); // stays fitted when the phone turns
   }, 250);
 })();

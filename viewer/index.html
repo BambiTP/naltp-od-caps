@@ -18,7 +18,7 @@
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/font-awesome.css">
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/style.css">
             <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/replay.css">
-            <link rel="stylesheet" href="./od-ui.css?v=4">
+            <link rel="stylesheet" href="./od-ui.css?v=5">
 
             <script src="./R-62bb0909b74c-z/compact/global-game.js"></script>
     <script type="text/javascript">
@@ -67,6 +67,7 @@
                 <div id="od-loading-title"></div>
                 <div id="od-loading-status">Loading the replay...</div>
                 <button id="od-play-button" type="button" hidden>&#9654; Play</button>
+                <a id="od-loading-tagpro-link" target="_blank" rel="noopener" hidden>Open on TagPro instead</a>
                 <div id="od-rotate-hint">Turn your phone sideways for a bigger view.</div>
             </div>
         </div>
@@ -86,6 +87,7 @@
                 <button id="od-view-button" type="button" title="Whole map or follow the carrier">Whole map</button>
                 <button id="od-zoomout-button" type="button" title="Zoom out">&minus;</button>
                 <button id="od-zoomin-button" type="button" title="Zoom in">+</button>
+                <a id="od-tagpro-link" target="_blank" rel="noopener" title="This replay on the real TagPro site" hidden>TagPro &#8599;</a>
             </div>
         </div>
         <button id="od-bar-toggle" type="button" title="Show or hide the controls" hidden>&#9776;</button>
@@ -683,6 +685,6 @@
             rdt("init", "t2_vrwbckj1", { "optOut": false, "useDecimalCurrencyValues": true, "email": "", "externalId": "" });
             rdt("track", "ViewContent");
         </script>
-        <script src="./od-ui.js?v=4"></script>
+        <script src="./od-ui.js?v=5"></script>
     </body>
 </html>
