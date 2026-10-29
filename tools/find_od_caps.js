@@ -2,6 +2,7 @@
 // Find NALTP flag runs for following: from the carrier's grab to their cap against OD, picked by rules (no hand picking).
 //   node tools/find_od_caps.js [--jobs N] [--replays DIR] [--games CSV] [--fetch CSV] [--extract extract.js]
 // --jobs N reads the replays in N processes at once (outputs are rewritten every minute as results come in).
+// --pick-only redoes the rules and the pick from data/all_od_caps.csv without reading the replays again.
 // Writes data/all_od_caps.csv (every run against OD, with its measures), data/od_caps.csv (the runs that pass)
 // and caps.json + replays/ (the picked ones, for the page).
 //
@@ -25,7 +26,7 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
 const MIN_RUN_S = 4, MAX_RUN_S = 12, OD_CHECK_MS = 4000, OD_RADIUS = 6, MIN_SPEED = 1,
   CHASE_DIST = 1.5, ESCAPE_MS = 2000, MAX_BACKTRACK = 3, OVERTAKE_NEAR = 4,
-  TURN_LOW = 25, TURN_HIGH = 75, PICK = 12, SEED = 20261028;
+  TURN_LOW = 25, TURN_HIGH = 75, PICK = Infinity, SEED = 20261028; // PICK = Infinity: every passing run
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
 const HOME = process.env.HOME;
@@ -74,6 +75,13 @@ let done = 0, skipped = 0;
 const JOBS = Number(arg('--jobs', 1)), SHARD = process.env.SHARD == null ? null : Number(process.env.SHARD);
 const shardFile = k => path.join(ROOT, 'data', `shard_${k}.json`);
 const saveShard = () => fs.writeFileSync(shardFile(SHARD), JSON.stringify({ done, skipped, found }));
+if (process.argv.includes('--pick-only')) {
+  found = readCsv(path.join(ROOT, 'data', 'all_od_caps.csv'));
+  for (const r of found) for (const k of ['od', 'dead', 'carrier_id', 'grab_ms', 'cap_ms', 'jukes', 'boosts', 'escape_boosts']) r[k] = Number(r[k]);
+  try { done = JSON.parse(fs.readFileSync(path.join(ROOT, 'caps.json'), 'utf8')).rules.games_read; } catch (e) { done = 0; }
+  writeOutputs();
+  return;
+}
 if (JOBS > 1 && SHARD == null) { runJobs(); return; }
 for (const [gi, g] of games.entries()) {
   if (SHARD != null && gi % Number(process.env.SHARDS) !== SHARD) continue;
@@ -228,18 +236,22 @@ for (const pool of [passing.filter(r => r.od >= 3 || (r.od === 2 && r.dead === 2
 }
 picked.sort((a, b) => a.played_utc.localeCompare(b.played_utc) || a.grab_ms - b.grab_ms);
 
-fs.rmSync(path.join(ROOT, 'replays'), { recursive: true, force: true });
-fs.mkdirSync(path.join(ROOT, 'replays'), { recursive: true });
+// replays/ holds exactly the picked runs' games: copy the missing ones, remove the rest
+const dir = path.join(ROOT, 'replays'), keep = new Set();
+fs.mkdirSync(dir, { recursive: true });
 for (const c of picked) {
   c.key = c.uuid.replace(/-/g, '').slice(0, 16); // the viewer's replay key (it keeps the first 16 characters)
-  fs.copyFileSync(path.join(REPLAYS, c.uuid + '.ndjson.gz'), path.join(ROOT, 'replays', c.key + '.ndjson.gz'));
+  const to = path.join(dir, c.key + '.ndjson.gz');
+  keep.add(c.key + '.ndjson.gz');
+  if (!fs.existsSync(to)) fs.copyFileSync(path.join(REPLAYS, c.uuid + '.ndjson.gz'), to);
 }
+for (const f of fs.readdirSync(dir)) if (!keep.has(f)) fs.unlinkSync(path.join(dir, f));
 require('./add_links').addLinks(picked, REPLAYS, FETCH); // links to the real TagPro replay viewer
 fs.writeFileSync(path.join(ROOT, 'caps.json'), JSON.stringify({
   rules: { min_run_s: MIN_RUN_S, max_run_s: MAX_RUN_S, od_check_s: OD_CHECK_MS / 1000, od_radius_tiles: OD_RADIUS,
     chase_dist_tiles: CHASE_DIST, escape_s: ESCAPE_MS / 1000, max_backtrack_tiles: MAX_BACKTRACK, overtake_near_tiles: OVERTAKE_NEAR,
     min_speed: MIN_SPEED, turn_low_pct: TURN_LOW, turn_high_pct: TURN_HIGH, turn_min: turnMin, turn_max: turnMax,
-    picked: PICK, seed: SEED, games_read: done, runs_found: found.length, runs_right_length: timed.length,
+    picked: picked.length, seed: SEED, games_read: done, runs_found: found.length, runs_right_length: timed.length,
     runs_passing: passing.length },
   caps: picked,
 }, null, 1));

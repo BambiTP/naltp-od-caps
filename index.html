@@ -87,8 +87,9 @@
     const rules = data.rules;
     caps = data.caps;
     document.getElementById('rules-text').textContent =
-      `Each one is a flag carrier's run from their grab to their cap, for following the path. ${caps.length} runs picked at ` +
-      `random (seed ${rules.seed}) from the ${rules.runs_passing} that pass these rules, out of ${rules.runs_found} runs ` +
+      `Each one is a flag carrier's run from their grab to their cap, for following the path. ` +
+      (caps.length < rules.runs_passing ? `${caps.length} runs picked at random (seed ${rules.seed}) from the ` : 'All ') +
+      `${rules.runs_passing} runs that pass these rules, out of ${rules.runs_found} runs ` +
       `against OD or chased in ${rules.games_read} comp replays. The run lasts ${rules.min_run_s} to ${rules.max_run_s} seconds and the ` +
       `carrier holds the flag the whole time. It is against OD, or the carrier is chased and boosts away, or both. ` +
       `OD: ${rules.od_check_s} seconds before the cap (or at the grab, if later), 3 or 4 enemies are alive within ` +
