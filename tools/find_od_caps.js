@@ -6,8 +6,12 @@
 //
 // A run is the carrier's last grab up to their cap, holding the flag the whole time. It passes when:
 //   - it lasts MIN_RUN_S to MAX_RUN_S seconds (long enough to follow, short enough to remember),
-//   - OD_CHECK_MS before the cap (or at the grab, if that is later) enemies guarding the carrier's own flag
-//     (alive, within OD_RADIUS tiles of it) number 3 or 4, or 2 with the other 2 dead (waiting to respawn),
+//   - it is against OD or the carrier gets chased and boosts away (either or both):
+//     OD: OD_CHECK_MS before the cap (or at the grab, if that is later) enemies guarding the carrier's own flag
+//       (alive, within OD_RADIUS tiles of it) number 3 or 4, or 2 with the other 2 dead (waiting to respawn);
+//     chased: an enemy is right behind the carrier (centres within CHASE_DIST tiles, so about half a tile
+//       between the balls, on the side away from where the carrier is heading) and the carrier uses a boost
+//       within ESCAPE_MS after that,
 //   - its turning per second is in the middle of all such runs (between the TURN_LOW and TURN_HIGH
 //     percentiles): not a plain straight line, not too zig-zaggy to follow. Turning = how many degrees the
 //     carrier's direction of travel changes between snapshots, added up, counted only while moving at
@@ -16,6 +20,7 @@
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
 const MIN_RUN_S = 4, MAX_RUN_S = 12, OD_CHECK_MS = 4000, OD_RADIUS = 6, MIN_SPEED = 1,
+  CHASE_DIST = 1.5, ESCAPE_MS = 2000,
   TURN_LOW = 25, TURN_HIGH = 75, PICK = 12, SEED = 20261028;
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -102,9 +107,26 @@ for (const g of games) {
       if (s.alive !== 'yes') dead++;
       else if (dist(centre(s), flag) <= OD_RADIUS) od++;
     }
-    if (!(od >= 3 || (od === 2 && dead === 2))) continue;
+    const isOd = od >= 3 || (od === 2 && dead === 2);
     const run = (track[cap.player] || []).filter(p => p.ms >= grab.ms && p.ms <= cap.ms);
     if (run.length < 2) continue;
+    // chased: an enemy right behind the carrier, then the carrier boosts within ESCAPE_MS
+    const enemies = Object.keys(teamOf).filter(n => teamOf[n] !== team);
+    const chasedAt = [];
+    let closest = Infinity;
+    for (const p of run) {
+      if (Math.hypot(p.vx, p.vy) < MIN_SPEED) continue;
+      for (const n of enemies) {
+        const e = at(n, p.ms);
+        if (!e || e.alive !== 'yes' || p.ms - e.ms > 300) continue;
+        const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
+        if (d <= CHASE_DIST && dx * p.vx + dy * p.vy < 0) { chasedAt.push(p.ms); closest = Math.min(closest, d); }
+      }
+    }
+    const boosts = t.events.filter(e => e.player === cap.player && / boost used$|^boost used$/.test(e.event) && e.ms >= grab.ms && e.ms <= cap.ms);
+    const escapes = boosts.filter(b => chasedAt.some(c => b.ms >= c && b.ms - c <= ESCAPE_MS)).length;
+    const isChased = escapes > 0;
+    if (!isOd && !isChased) continue;
     let jukes = 0, len = 0, turn = 0;
     const moving = p => Math.hypot(p.vx, p.vy) >= MIN_SPEED;
     for (let i = 1; i < run.length; i++) {
@@ -124,15 +146,19 @@ for (const g of games) {
       map: g.map, played_utc: g.played_utc, tagpro_eu_match: String(parseInt(g.tagpro_eu_match)), uuid,
       cap_team: cap.team, carrier: cap.player, carrier_id: idOf[cap.player] ?? '',
       grab_clock_s: grab.seconds, grab_ms: grab.ms, cap_ms: cap.ms, run_s: runS.toFixed(2),
-      od, dead, kind: od >= 3 ? `${od} OD` : '2 OD + 2 respawning',
+      od, dead, kind: [isOd ? (od >= 3 ? `${od} OD` : '2 OD + 2 respawning') : '', isChased ? 'chased, boosts away' : ''].filter(Boolean).join(' + '),
+      chased: isChased ? 'yes' : '', closest_gap_tiles: closest === Infinity ? '' : (closest - 1).toFixed(2), boosts: boosts.length, escape_boosts: escapes,
       turn_deg_per_s: (turn / runS).toFixed(1), jukes, jukes_per_s: (jukes / runS).toFixed(2), key_presses_per_s: (keys / runS).toFixed(2),
       path_tiles: len.toFixed(1), straight_tiles: dist(centre(run[0]), flag).toFixed(1),
       route_w: (Math.max(...xs) - Math.min(...xs) + 1).toFixed(1), route_h: (Math.max(...ys) - Math.min(...ys) + 1).toFixed(1),
       route_cx: ((Math.max(...xs) + Math.min(...xs)) / 2).toFixed(1), route_cy: ((Math.max(...ys) + Math.min(...ys)) / 2).toFixed(1),
     });
   }
-  if (++done % 250 === 0) console.log(`${done}/${games.length} games, ${found.length} caps so far`);
+  if (++done % 250 === 0) { console.log(`${done}/${games.length} games, ${found.length} runs so far`); writeOutputs(); }
 }
+writeOutputs();
+
+function writeOutputs() {
 const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
 const writeCsv = (name, rows) => {
   const cols = Object.keys(found[0] || {});
@@ -148,16 +174,21 @@ const pct = p => rates.length ? rates[Math.min(rates.length - 1, Math.floor(p / 
 const turnMin = pct(TURN_LOW), turnMax = pct(TURN_HIGH);
 const passing = timed.filter(r => Number(r.turn_deg_per_s) >= turnMin && Number(r.turn_deg_per_s) <= turnMax);
 writeCsv('od_caps.csv', passing);
-console.log(`${done} games read, ${skipped} skipped, ${found.length} runs against OD, ${timed.length} of the right length, ` +
+console.log(`${done} games read, ${skipped} skipped, ${found.length} runs against OD or chased, ${timed.length} of the right length, ` +
   `${passing.length} turning ${turnMin}-${turnMax} degrees a second`);
 
-// pick PICK caps at random with a fixed seed (same pick every run on the same data)
-let s = SEED;
+// pick PICK runs at random with a fixed seed (same pick every run on the same data)
+let s = SEED; // restarts each time, so a partial run picks the same way as a full one
 const rand = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
-const pool = passing.slice(), picked = [];
-while (picked.length < PICK && pool.length) picked.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+// half from runs against OD (chased or not), half from chased-only runs, so neither swamps the other
+const picked = [];
+for (const pool of [passing.filter(r => r.od >= 3 || (r.od === 2 && r.dead === 2)), passing.filter(r => !(r.od >= 3 || (r.od === 2 && r.dead === 2)))]) {
+  const want = picked.length + PICK / 2;
+  while (picked.length < want && pool.length) picked.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+}
 picked.sort((a, b) => a.played_utc.localeCompare(b.played_utc) || a.grab_ms - b.grab_ms);
 
+fs.rmSync(path.join(ROOT, 'replays'), { recursive: true, force: true });
 fs.mkdirSync(path.join(ROOT, 'replays'), { recursive: true });
 for (const c of picked) {
   c.key = c.uuid.replace(/-/g, '').slice(0, 16); // the viewer's replay key (it keeps the first 16 characters)
@@ -165,9 +196,11 @@ for (const c of picked) {
 }
 fs.writeFileSync(path.join(ROOT, 'caps.json'), JSON.stringify({
   rules: { min_run_s: MIN_RUN_S, max_run_s: MAX_RUN_S, od_check_s: OD_CHECK_MS / 1000, od_radius_tiles: OD_RADIUS,
+    chase_dist_tiles: CHASE_DIST, escape_s: ESCAPE_MS / 1000,
     min_speed: MIN_SPEED, turn_low_pct: TURN_LOW, turn_high_pct: TURN_HIGH, turn_min: turnMin, turn_max: turnMax,
-    picked: PICK, seed: SEED, games_read: done, runs_against_od: found.length, runs_right_length: timed.length,
+    picked: PICK, seed: SEED, games_read: done, runs_found: found.length, runs_right_length: timed.length,
     runs_passing: passing.length },
   caps: picked,
 }, null, 1));
 console.log(`picked ${picked.length}`);
+}
