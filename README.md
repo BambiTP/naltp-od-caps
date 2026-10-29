@@ -2,7 +2,7 @@
 
 Flag carriers' runs from grab to cap, against OD or chased, in NALTP comp games (Season 31 onward, the games with
 TagPro replays), for following the carrier's path. Each one opens in the real TagPro replay viewer just
-before the grab, following the carrier.
+before the grab, showing the whole map.
 
 **Page:** open `index.html` (GitHub Pages: branch `main`, folder `/ (root)`).
 
@@ -30,6 +30,6 @@ node tools/find_od_caps.js --replays <folder of <uuid>.ndjson.gz> --games comp_g
 ## Viewer
 
 `viewer/` is the real TagPro game client in replay mode (from BambiTP/tagpro-offline and the replay page
-of BambiTP/tagpro-local). `viewer/?replay=<key>&t=<ms>&follow=<player id>&route=<w>,<h>` loads `replays/<key>.ndjson.gz`,
-waits on a loading cover until it has jumped to `t`, then plays on a tap, following that player. On phones it
-starts zoomed to fit the run (`route`, in tiles) and has a touch control bar.
+of BambiTP/tagpro-local). `viewer/?replay=<key>&t=<ms>&follow=<player id>` loads `replays/<key>.ndjson.gz`,
+waits on a loading cover until it has jumped to `t`, then plays on a tap, showing the whole map (a button switches to following that player). It has a touch
+control bar for phones.

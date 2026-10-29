@@ -51,7 +51,7 @@
       const title = `${c.carrier}: grab to cap, ${c.kind} - ${c.season} ${c.league} week ${c.week} ${c.game}, ${c.map}`;
       const a = document.createElement('a');
       a.className = 'cap-card';
-      a.href = `viewer/?replay=${c.key}&t=${Math.max(0, c.grab_ms - LEAD_MS)}&follow=${c.carrier_id}&route=${c.route_w},${c.route_h}&title=${encodeURIComponent(title)}`;
+      a.href = `viewer/?replay=${c.key}&t=${Math.max(0, c.grab_ms - LEAD_MS)}&follow=${c.carrier_id}&title=${encodeURIComponent(title)}`;
       const watch = document.createElement('span');
       watch.className = 'cap-watch';
       watch.textContent = 'Watch';
@@ -83,7 +83,7 @@
       `Turning (how much the carrier's direction changes, in degrees a second) is between the ${rules.turn_low_pct}th and ` +
       `${rules.turn_high_pct}th percentile of runs of that length (${rules.turn_min} to ${rules.turn_max}): no plain ` +
       `straight lines, nothing too zig-zaggy to follow. A juke is a full left/right or up/down reversal. ` +
-      `Watch opens the replay ${LEAD_MS / 1000} seconds before the grab, following the carrier.`;
+      `Watch opens the replay ${LEAD_MS / 1000} seconds before the grab, showing the whole map.`;
     Object.keys(filters).forEach(fillFilter);
     show();
   });
