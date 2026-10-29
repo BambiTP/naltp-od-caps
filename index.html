@@ -94,7 +94,8 @@
       `OD: ${rules.od_check_s} seconds before the cap (or at the grab, if later), 3 or 4 enemies are alive within ` +
       `${rules.od_radius_tiles} tiles of the carrier's flag, or 2 are and the other 2 are dead. Chased: an enemy is right ` +
       `behind the carrier (about half a tile between them) and the carrier uses a boost within ${rules.escape_s} seconds. ` +
-      `Turning (how much the carrier's direction changes, in degrees a second) is between the ${rules.turn_low_pct}th and ` +
+      `Nobody who was chasing the carrier gets ahead of them, and the carrier never goes more than ` +
+      `${rules.max_backtrack_tiles} tiles backwards (away from their flag). Turning (how much the carrier's direction changes, in degrees a second) is between the ${rules.turn_low_pct}th and ` +
       `${rules.turn_high_pct}th percentile of runs of that length (${rules.turn_min} to ${rules.turn_max}): no plain ` +
       `straight lines, nothing too zig-zaggy to follow. A juke is a full left/right or up/down reversal. ` +
       `Watch opens the replay ${LEAD_MS / 1000} seconds before the grab, showing the whole map.`;

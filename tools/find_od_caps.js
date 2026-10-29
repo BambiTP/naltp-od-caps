@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Find NALTP flag runs for following: from the carrier's grab to their cap against OD, picked by rules (no hand picking).
-//   node tools/find_od_caps.js [--replays DIR] [--games CSV] [--fetch CSV] [--extract extract.js]
+//   node tools/find_od_caps.js [--jobs N] [--replays DIR] [--games CSV] [--fetch CSV] [--extract extract.js]
+// --jobs N reads the replays in N processes at once (outputs are rewritten every minute as results come in).
 // Writes data/all_od_caps.csv (every run against OD, with its measures), data/od_caps.csv (the runs that pass)
 // and caps.json + replays/ (the picked ones, for the page).
 //
@@ -12,6 +13,9 @@
 //     chased: an enemy is right behind the carrier (centres within CHASE_DIST tiles, so about half a tile
 //       between the balls, on the side away from where the carrier is heading) and the carrier uses a boost
 //       within ESCAPE_MS after that,
+//   - nobody who was chasing the carrier gets ahead of them (closer to the carrier's flag, within 4 tiles of them),
+//   - the carrier never goes backwards more than MAX_BACKTRACK tiles (straight-line distance to their flag growing
+//     past the closest they had been),
 //   - its turning per second is in the middle of all such runs (between the TURN_LOW and TURN_HIGH
 //     percentiles): not a plain straight line, not too zig-zaggy to follow. Turning = how many degrees the
 //     carrier's direction of travel changes between snapshots, added up, counted only while moving at
@@ -20,7 +24,7 @@
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
 const MIN_RUN_S = 4, MAX_RUN_S = 12, OD_CHECK_MS = 4000, OD_RADIUS = 6, MIN_SPEED = 1,
-  CHASE_DIST = 1.5, ESCAPE_MS = 2000,
+  CHASE_DIST = 1.5, ESCAPE_MS = 2000, MAX_BACKTRACK = 3, OVERTAKE_NEAR = 4,
   TURN_LOW = 25, TURN_HIGH = 75, PICK = 12, SEED = 20261028;
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -65,9 +69,14 @@ function flagSpots(file) {
 }
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const found = [];
+let found = [];
 let done = 0, skipped = 0;
-for (const g of games) {
+const JOBS = Number(arg('--jobs', 1)), SHARD = process.env.SHARD == null ? null : Number(process.env.SHARD);
+const shardFile = k => path.join(ROOT, 'data', `shard_${k}.json`);
+const saveShard = () => fs.writeFileSync(shardFile(SHARD), JSON.stringify({ done, skipped, found }));
+if (JOBS > 1 && SHARD == null) { runJobs(); return; }
+for (const [gi, g] of games.entries()) {
+  if (SHARD != null && gi % Number(process.env.SHARDS) !== SHARD) continue;
   const uuid = uuidOf[String(parseInt(g.tagpro_eu_match))];
   const file = path.join(REPLAYS, uuid + '.ndjson.gz');
   if (!fs.existsSync(file)) { skipped++; continue; }
@@ -112,15 +121,20 @@ for (const g of games) {
     if (run.length < 2) continue;
     // chased: an enemy right behind the carrier, then the carrier boosts within ESCAPE_MS
     const enemies = Object.keys(teamOf).filter(n => teamOf[n] !== team);
-    const chasedAt = [];
-    let closest = Infinity;
+    const chasedAt = [], chasers = new Set();
+    let closest = Infinity, overtaken = '', backtrack = 0, nearest = Infinity;
     for (const p of run) {
-      if (Math.hypot(p.vx, p.vy) < MIN_SPEED) continue;
+      const toFlag = dist(centre(p), flag);
+      nearest = Math.min(nearest, toFlag);
+      backtrack = Math.max(backtrack, toFlag - nearest);
       for (const n of enemies) {
         const e = at(n, p.ms);
         if (!e || e.alive !== 'yes' || p.ms - e.ms > 300) continue;
         const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
-        if (d <= CHASE_DIST && dx * p.vx + dy * p.vy < 0) { chasedAt.push(p.ms); closest = Math.min(closest, d); }
+        // a chaser who gets ahead: closer to the carrier's flag than the carrier, while still near them
+        if (chasers.has(n) && d <= OVERTAKE_NEAR && dist(centre(e), flag) < toFlag - 0.5) overtaken = n;
+        if (Math.hypot(p.vx, p.vy) < MIN_SPEED) continue;
+        if (d <= CHASE_DIST && dx * p.vx + dy * p.vy < 0) { chasedAt.push(p.ms); chasers.add(n); closest = Math.min(closest, d); }
       }
     }
     const boosts = t.events.filter(e => e.player === cap.player && / boost used$|^boost used$/.test(e.event) && e.ms >= grab.ms && e.ms <= cap.ms);
@@ -147,16 +161,42 @@ for (const g of games) {
       cap_team: cap.team, carrier: cap.player, carrier_id: idOf[cap.player] ?? '',
       grab_clock_s: grab.seconds, grab_ms: grab.ms, cap_ms: cap.ms, run_s: runS.toFixed(2),
       od, dead, kind: [isOd ? (od >= 3 ? `${od} OD` : '2 OD + 2 respawning') : '', isChased ? 'chased, boosts away' : ''].filter(Boolean).join(' + '),
-      chased: isChased ? 'yes' : '', closest_gap_tiles: closest === Infinity ? '' : (closest - 1).toFixed(2), boosts: boosts.length, escape_boosts: escapes,
+      chased: isChased ? 'yes' : '', overtaken_by: overtaken, backtrack_tiles: backtrack.toFixed(1), closest_gap_tiles: closest === Infinity ? '' : (closest - 1).toFixed(2), boosts: boosts.length, escape_boosts: escapes,
       turn_deg_per_s: (turn / runS).toFixed(1), jukes, jukes_per_s: (jukes / runS).toFixed(2), key_presses_per_s: (keys / runS).toFixed(2),
       path_tiles: len.toFixed(1), straight_tiles: dist(centre(run[0]), flag).toFixed(1),
       route_w: (Math.max(...xs) - Math.min(...xs) + 1).toFixed(1), route_h: (Math.max(...ys) - Math.min(...ys) + 1).toFixed(1),
       route_cx: ((Math.max(...xs) + Math.min(...xs)) / 2).toFixed(1), route_cy: ((Math.max(...ys) + Math.min(...ys)) / 2).toFixed(1),
     });
   }
-  if (++done % 250 === 0) { console.log(`${done}/${games.length} games, ${found.length} runs so far`); writeOutputs(); }
+  ++done;
+  if (SHARD != null) { if (done % 25 === 0) saveShard(); }
+  else if (done % 250 === 0) { console.log(`${done}/${games.length} games, ${found.length} runs so far`); writeOutputs(); }
 }
+if (SHARD != null) { saveShard(); return; }
 writeOutputs();
+
+// parent of --jobs: start one process per shard, merge their results every minute and at the end
+function runJobs() {
+  fs.mkdirSync(path.join(ROOT, 'data'), { recursive: true });
+  const { spawn } = require('child_process');
+  let running = JOBS;
+  const merge = () => {
+    found = []; done = 0; skipped = 0;
+    for (let k = 0; k < JOBS; k++) {
+      if (!fs.existsSync(shardFile(k))) continue;
+      try { const d = JSON.parse(fs.readFileSync(shardFile(k), 'utf8')); found.push(...d.found); done += d.done; skipped += d.skipped; } catch (e) { /* being written */ }
+    }
+    found.sort((a, b) => a.played_utc.localeCompare(b.played_utc) || a.cap_ms - b.cap_ms);
+    console.log(`${done}/${games.length} games`);
+    if (found.length) writeOutputs();
+  };
+  for (let k = 0; k < JOBS; k++) {
+    if (fs.existsSync(shardFile(k))) fs.unlinkSync(shardFile(k));
+    spawn(process.execPath, process.argv.slice(1), { env: { ...process.env, SHARD: k, SHARDS: JOBS }, stdio: 'inherit' })
+      .on('exit', () => { if (--running === 0) { clearInterval(timer); merge(); for (let j = 0; j < JOBS; j++) fs.rmSync(shardFile(j), { force: true }); } });
+  }
+  const timer = setInterval(merge, 60000);
+}
 
 function writeOutputs() {
 const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
@@ -168,13 +208,13 @@ fs.mkdirSync(path.join(ROOT, 'data'), { recursive: true });
 writeCsv('all_od_caps.csv', found);
 
 // turning band: percentiles of turning per second over the runs of the right length
-const timed = found.filter(r => r.run_s >= MIN_RUN_S && r.run_s <= MAX_RUN_S);
+const timed = found.filter(r => r.run_s >= MIN_RUN_S && r.run_s <= MAX_RUN_S && !r.overtaken_by && Number(r.backtrack_tiles) <= MAX_BACKTRACK);
 const rates = timed.map(r => Number(r.turn_deg_per_s)).sort((a, b) => a - b);
 const pct = p => rates.length ? rates[Math.min(rates.length - 1, Math.floor(p / 100 * rates.length))] : 0;
 const turnMin = pct(TURN_LOW), turnMax = pct(TURN_HIGH);
 const passing = timed.filter(r => Number(r.turn_deg_per_s) >= turnMin && Number(r.turn_deg_per_s) <= turnMax);
 writeCsv('od_caps.csv', passing);
-console.log(`${done} games read, ${skipped} skipped, ${found.length} runs against OD or chased, ${timed.length} of the right length, ` +
+console.log(`${done} games read, ${skipped} skipped, ${found.length} runs against OD or chased, ${timed.length} of the right length with no overtaking or big backtrack, ` +
   `${passing.length} turning ${turnMin}-${turnMax} degrees a second`);
 
 // pick PICK runs at random with a fixed seed (same pick every run on the same data)
@@ -197,7 +237,7 @@ for (const c of picked) {
 require('./add_links').addLinks(picked, REPLAYS, FETCH); // links to the real TagPro replay viewer
 fs.writeFileSync(path.join(ROOT, 'caps.json'), JSON.stringify({
   rules: { min_run_s: MIN_RUN_S, max_run_s: MAX_RUN_S, od_check_s: OD_CHECK_MS / 1000, od_radius_tiles: OD_RADIUS,
-    chase_dist_tiles: CHASE_DIST, escape_s: ESCAPE_MS / 1000,
+    chase_dist_tiles: CHASE_DIST, escape_s: ESCAPE_MS / 1000, max_backtrack_tiles: MAX_BACKTRACK, overtake_near_tiles: OVERTAKE_NEAR,
     min_speed: MIN_SPEED, turn_low_pct: TURN_LOW, turn_high_pct: TURN_HIGH, turn_min: turnMin, turn_max: turnMax,
     picked: PICK, seed: SEED, games_read: done, runs_found: found.length, runs_right_length: timed.length,
     runs_passing: passing.length },

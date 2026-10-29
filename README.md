@@ -15,6 +15,8 @@ All by `tools/find_od_caps.js`, no hand picking:
   grab, if later) 3 or 4 enemies are alive within 6 tiles of the carrier's own flag, or 2 are and the other 2 are
   dead (waiting to respawn). Chased: an enemy is right behind the carrier (about half a tile between the balls)
   and the carrier uses a boost within 2 seconds;
+- nobody who was chasing the carrier gets ahead of them, and the carrier never goes more than 3 tiles backwards
+  (away from their own flag);
 - the carrier's turning (degrees their direction of travel changes, per second, while moving) is between the
   25th and 75th percentile of runs of that length: no plain straight lines, nothing too zig-zaggy to follow.
 
@@ -23,7 +25,7 @@ those, chosen at random with a fixed seed (half against OD, half chased only), a
 at the top of the script.
 
 ```
-node tools/find_od_caps.js --replays <folder of <uuid>.ndjson.gz> --games comp_games_replay_era.csv \
+node tools/find_od_caps.js --jobs 4 --replays <folder of <uuid>.ndjson.gz> --games comp_games_replay_era.csv \
   --fetch comp_fetch.csv --extract <tagpro-timeline>/extract.js
 ```
 
