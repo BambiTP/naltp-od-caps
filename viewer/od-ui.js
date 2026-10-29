@@ -3,10 +3,8 @@
 // The cover stays up (sound off) until the replay is downloaded, the page's images are loaded and the
 // client has jumped to t; then it pauses there and waits for a tap on Play (which also lets phones play sound).
 //
-// Camera, from the client's renderer: the picture is scaled by (1 / tagpro.zoom) * (canvas height / 800), so at
-// any screen size zoom 1 shows 32 x 20 tiles and zoom z shows 32z x 20z. With followPlayer off the camera sits on
-// the map's centre. (The client's own whole-map zoom divides by the canvas's pixel width instead, which is wrong
-// on phones and large windows, and its "overview" mode darkens the screen, so neither is used.)
+// Whole map: the zoom is worked out from the canvas's actual size on screen (minus the control bar), so the map
+// just fits. The client's own whole-map zoom gets this wrong on phones, and its "overview" mode darkens the screen.
 (function () {
   var q = new URLSearchParams(location.search);
   var start = Number(q.get('t')) || 0, follow = Number(q.get('follow')) || 0, title = q.get('title') || '';
@@ -24,9 +22,13 @@
   // camera: 'map' = whole map, 'follow' = follow the carrier at normal zoom
   var camera = 'map', zoomBy = 1, wantedSound = null, ready = false;
 
+  // the client draws the map scaled by resizeScaleFactor / zoom inside a canvas vpWidth x vpHeight on screen
   function wholeMapZoom() {
-    var m = tagpro.map;
-    return m ? Math.max(m.length / 32, m[0].length / 20) * 1.04 : 1;
+    var m = tagpro.map, r = tagpro.renderer;
+    if (!m || !r || !r.vpWidth || !r.vpHeight) return 1;
+    var barHeight = bar.hidden ? 0 : bar.offsetHeight; // the map is centred, so leave the bar's height at both ends
+    var w = r.vpWidth, h = Math.max(100, r.vpHeight - 2 * barHeight), f = r.resizeScaleFactor || 1;
+    return Math.max(40 * m.length * f / w, 40 * m[0].length * f / h) * 1.02;
   }
   // put the camera where it should be; run often, because the client changes these on its own events
   function applyCamera() {
