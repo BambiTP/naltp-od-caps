@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NALTP OD Caps</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+</style>
+</head>
+<body>
+<h1>NALTP caps against OD</h1>
+<p id="rules-text">Loading...</p>
+<p><a href="data/od_caps.csv">Every cap that passes the rules (CSV)</a></p>
+<table id="caps-table">
+  <thead>
+    <tr><th>Season</th><th>League</th><th>Week</th><th>Game</th><th>Teams</th><th>Map</th><th>Time into game</th>
+      <th>Carrier</th><th>Defence</th><th>Zig-zag</th><th></th></tr>
+  </thead>
+  <tbody id="caps-rows"></tbody>
+</table>
+<script>
+  const LEAD_MS = 10000; // the viewer starts this long before the cap
+  const clock = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  fetch('caps.json').then(r => r.json()).then(({ rules, caps }) => {
+    document.getElementById('rules-text').textContent =
+      `${rules.picked} caps picked at random (seed ${rules.seed}) from the ${rules.caps_passing} caps in ${rules.games_read} ` +
+      `comp replays that pass these rules, checked ${rules.window_s} seconds before the cap: the carrier already has the flag; ` +
+      `3 or 4 enemies are alive within ${rules.od_radius_tiles} tiles of the carrier's flag, or 2 are and the other 2 are dead; ` +
+      `and the carrier's path into the flag is at least ${rules.min_zigzag} times the straight-line distance (no straight lines).`;
+    const rows = document.getElementById('caps-rows');
+    for (const c of caps) {
+      const tr = document.createElement('tr');
+      const watch = `viewer/?replay=${c.key}&t=${Math.max(0, c.cap_ms - LEAD_MS)}&follow=${c.carrier_id}`;
+      const cells = [c.season, c.league, c.week, c.game, `${c.team_a} vs ${c.team_b}`, c.map, clock(c.game_clock_s),
+        `${c.carrier} (${c.cap_team})`, c.kind, c.zigzag];
+      for (const v of cells) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+      const td = document.createElement('td'), a = document.createElement('a');
+      a.href = watch; a.target = '_blank'; a.textContent = 'Watch';
+      td.appendChild(a); tr.appendChild(td);
+      rows.appendChild(tr);
+    }
+  });
+</script>
+</body>
+</html>

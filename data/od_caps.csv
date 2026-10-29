@@ -1,0 +1,6 @@
+season,league,week,game,team_a,team_b,map,played_utc,tagpro_eu_match,uuid,cap_team,carrier,carrier_id,game_clock_s,cap_ms,od,dead,kind,zigzag,path_tiles,straight_tiles
+S31,Novice,1,G1,Land Before Timers,Miami Ballphins (N),Oak,2023-09-28T02:09:04+00:00,3525759,55468174-94c8-48a4-86a0-5ac290394953,blue,Glizzy,1,262.554,282555,2,2,2 OD + 2 respawning,1.62,21.5,13.2
+S31,Novice,2,G2,Miami Ballphins (N),Respawnsiballs (N),Asida,2023-10-02T01:27:32+00:00,3528042,50e9d14d-5f31-47c8-9077-adfebe1f6d62,red,phlasid,1,82.315,102316,3,0,3 OD,2.53,14.8,5.8
+S31,Majors,2,G2,Miami Ballphins,The Way of Pings,Asida,2023-10-02T02:08:48+00:00,3528085,60583bd4-8441-4c0d-bef8-007d364cd519,blue,Messi,15,229.659,249661,2,2,2 OD + 2 respawning,1.87,19.0,10.1
+S31,Majors,2,G5,Arctag iceCaps,The Holy Seehawks,Asida,2023-10-02T02:24:21+00:00,3528099,5c522929-191f-4840-a6cd-0265b7e0d747,red,bbb,3,319.28,339280,2,2,2 OD + 2 respawning,1.32,7.8,5.9
+S31,Majors,2,G3,Converse Ballstars,Good Read You! Block Enterer,OTI MERALD,2023-10-02T02:26:02+00:00,3528100,e11621b1-f5e6-4a26-8530-15b5d35274ad,red,inthesomeday,12,280.733,300734,4,0,4 OD,2.16,14.3,6.6
