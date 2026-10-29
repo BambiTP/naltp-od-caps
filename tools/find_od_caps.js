@@ -1,18 +1,22 @@
 #!/usr/bin/env node
-// Find NALTP caps scored against OD and pick a few for the page, all by the rules below (no hand picking).
+// Find NALTP flag runs for following: from the carrier's grab to their cap against OD, picked by rules (no hand picking).
 //   node tools/find_od_caps.js [--replays DIR] [--games CSV] [--fetch CSV] [--extract extract.js]
-// Writes data/od_caps.csv (every cap that passes) and caps.json + replays/ (the picked ones, for the page).
+// Writes data/all_od_caps.csv (every run against OD, with its measures), data/od_caps.csv (the runs that pass)
+// and caps.json + replays/ (the picked ones, for the page).
 //
-// A cap passes when, WINDOW_MS before the cap:
-//   - the carrier already holds the flag (so the whole run into the flag is theirs),
-//   - enemies guarding the carrier's own flag (alive, within OD_RADIUS tiles of it) number 3 or 4,
-//     or 2 with the other 2 dead (waiting to respawn),
-//   - and the carrier's path over the window is not a straight line: path length / straight-line
-//     distance from window start to cap is at least MIN_ZIGZAG.
+// A run is the carrier's last grab up to their cap, holding the flag the whole time. It passes when:
+//   - it lasts MIN_RUN_S to MAX_RUN_S seconds (long enough to follow, short enough to remember),
+//   - OD_CHECK_MS before the cap (or at the grab, if that is later) enemies guarding the carrier's own flag
+//     (alive, within OD_RADIUS tiles of it) number 3 or 4, or 2 with the other 2 dead (waiting to respawn),
+//   - its turning per second is in the middle of all such runs (between the TURN_LOW and TURN_HIGH
+//     percentiles): not a plain straight line, not too zig-zaggy to follow. Turning = how many degrees the
+//     carrier's direction of travel changes between snapshots, added up, counted only while moving at
+//     least MIN_SPEED tiles a second. Jukes (full left/right or up/down reversals) are listed too.
 // Positions are the replay's snapshots (about 4 a second per player).
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
-const WINDOW_MS = 4000, OD_RADIUS = 6, MIN_ZIGZAG = 1.3, PICK = 12, SEED = 20261028;
+const MIN_RUN_S = 4, MAX_RUN_S = 12, OD_CHECK_MS = 4000, OD_RADIUS = 6, MIN_SPEED = 1,
+  TURN_LOW = 25, TURN_HIGH = 75, PICK = 12, SEED = 20261028;
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
 const HOME = process.env.HOME;
@@ -79,49 +83,80 @@ for (const g of games) {
   const centre = p => [p.x + 0.5, p.y + 0.5];
 
   for (const cap of t.events.filter(e => e.event === 'cap' && e.team)) {
-    const team = cap.team === 'red' ? 1 : 2, flag = spots[team][0], from = cap.ms - WINDOW_MS;
-    const start = at(cap.player, from);
-    if (!start || !start.flag || start.alive !== 'yes') continue;
+    const team = cap.team === 'red' ? 1 : 2, flag = spots[team][0];
+    // the carrier's own last grab before the cap, with no pop of theirs in between
+    let grab = null;
+    for (const e of t.events) {
+      if (e.ms > cap.ms) break;
+      if (e.player !== cap.player) continue;
+      if (e.event === 'grab') grab = e;
+      else if (e.event === 'pop' || e.event === 'cap' && e !== cap) grab = null;
+    }
+    if (!grab) continue;
+    const runS = (cap.ms - grab.ms) / 1000;
+    const from = Math.max(grab.ms, cap.ms - OD_CHECK_MS);
     let od = 0, dead = 0;
-    const enemies = Object.keys(teamOf).filter(n => teamOf[n] !== team);
-    for (const n of enemies) {
+    for (const n of Object.keys(teamOf).filter(n => teamOf[n] !== team)) {
       const s = at(n, from);
       if (!s) continue;
       if (s.alive !== 'yes') dead++;
       else if (dist(centre(s), flag) <= OD_RADIUS) od++;
     }
     if (!(od >= 3 || (od === 2 && dead === 2))) continue;
-    const runs = (track[cap.player] || []).filter(p => p.ms >= from && p.ms <= cap.ms);
-    const pts = [centre(start), ...runs.map(centre), flag];
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) len += dist(pts[i - 1], pts[i]);
-    const straight = dist(pts[0], flag);
-    const zigzag = straight > 0.5 ? len / straight : Infinity;
-    if (zigzag < MIN_ZIGZAG) continue;
+    const run = (track[cap.player] || []).filter(p => p.ms >= grab.ms && p.ms <= cap.ms);
+    if (run.length < 2) continue;
+    let jukes = 0, len = 0, turn = 0;
+    const moving = p => Math.hypot(p.vx, p.vy) >= MIN_SPEED;
+    for (let i = 1; i < run.length; i++) {
+      const a = run[i - 1], b = run[i];
+      len += dist(centre(a), centre(b));
+      if (!moving(a) || !moving(b)) continue;
+      let d = Math.atan2(b.vy, b.vx) - Math.atan2(a.vy, a.vx);
+      d = Math.abs(((d + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+      turn += d * 180 / Math.PI;
+      for (const k of ['vx', 'vy'])
+        if (Math.abs(a[k]) >= MIN_SPEED && Math.abs(b[k]) >= MIN_SPEED && Math.sign(a[k]) !== Math.sign(b[k])) jukes++;
+    }
+    const xs = run.map(p => p.x + 0.5), ys = run.map(p => p.y + 0.5);
+    const keys = t.keypresses.filter(k => k.player === cap.player && k.action === 'pressed' && k.ms >= grab.ms && k.ms <= cap.ms).length;
     found.push({
       season: g.season, league: g.league, week: g.week, game: g.game, team_a: g.team_a, team_b: g.team_b,
       map: g.map, played_utc: g.played_utc, tagpro_eu_match: String(parseInt(g.tagpro_eu_match)), uuid,
-      cap_team: cap.team, carrier: cap.player, carrier_id: idOf[cap.player] ?? '', game_clock_s: cap.seconds,
-      cap_ms: cap.ms, od, dead, kind: od >= 3 ? `${od} OD` : '2 OD + 2 respawning',
-      zigzag: zigzag === Infinity ? 'inf' : zigzag.toFixed(2), path_tiles: len.toFixed(1), straight_tiles: straight.toFixed(1),
+      cap_team: cap.team, carrier: cap.player, carrier_id: idOf[cap.player] ?? '',
+      grab_clock_s: grab.seconds, grab_ms: grab.ms, cap_ms: cap.ms, run_s: runS.toFixed(2),
+      od, dead, kind: od >= 3 ? `${od} OD` : '2 OD + 2 respawning',
+      turn_deg_per_s: (turn / runS).toFixed(1), jukes, jukes_per_s: (jukes / runS).toFixed(2), key_presses_per_s: (keys / runS).toFixed(2),
+      path_tiles: len.toFixed(1), straight_tiles: dist(centre(run[0]), flag).toFixed(1),
+      route_w: (Math.max(...xs) - Math.min(...xs) + 1).toFixed(1), route_h: (Math.max(...ys) - Math.min(...ys) + 1).toFixed(1),
+      route_cx: ((Math.max(...xs) + Math.min(...xs)) / 2).toFixed(1), route_cy: ((Math.max(...ys) + Math.min(...ys)) / 2).toFixed(1),
     });
   }
   if (++done % 250 === 0) console.log(`${done}/${games.length} games, ${found.length} caps so far`);
 }
-console.log(`${done} games read, ${skipped} skipped, ${found.length} caps pass`);
-
-fs.mkdirSync(path.join(ROOT, 'data'), { recursive: true });
-const cols = Object.keys(found[0] || {});
 const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
-fs.writeFileSync(path.join(ROOT, 'data', 'od_caps.csv'),
-  [cols.join(','), ...found.map(r => cols.map(c => cell(r[c])).join(','))].join('\n') + '\n');
+const writeCsv = (name, rows) => {
+  const cols = Object.keys(found[0] || {});
+  fs.writeFileSync(path.join(ROOT, 'data', name), [cols.join(','), ...rows.map(r => cols.map(c => cell(r[c])).join(','))].join('\n') + '\n');
+};
+fs.mkdirSync(path.join(ROOT, 'data'), { recursive: true });
+writeCsv('all_od_caps.csv', found);
+
+// turning band: percentiles of turning per second over the runs of the right length
+const timed = found.filter(r => r.run_s >= MIN_RUN_S && r.run_s <= MAX_RUN_S);
+const rates = timed.map(r => Number(r.turn_deg_per_s)).sort((a, b) => a - b);
+const pct = p => rates.length ? rates[Math.min(rates.length - 1, Math.floor(p / 100 * rates.length))] : 0;
+const turnMin = pct(TURN_LOW), turnMax = pct(TURN_HIGH);
+const passing = timed.filter(r => Number(r.turn_deg_per_s) >= turnMin && Number(r.turn_deg_per_s) <= turnMax);
+writeCsv('od_caps.csv', passing);
+console.log(`${done} games read, ${skipped} skipped, ${found.length} runs against OD, ${timed.length} of the right length, ` +
+  `${passing.length} turning ${turnMin}-${turnMax} degrees a second`);
 
 // pick PICK caps at random with a fixed seed (same pick every run on the same data)
 let s = SEED;
 const rand = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
-const pool = found.slice(), picked = [];
+const pool = passing.slice(), picked = [];
 while (picked.length < PICK && pool.length) picked.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
-picked.sort((a, b) => a.played_utc.localeCompare(b.played_utc) || a.cap_ms - b.cap_ms);
+picked.sort((a, b) => a.played_utc.localeCompare(b.played_utc) || a.grab_ms - b.grab_ms);
 
 fs.mkdirSync(path.join(ROOT, 'replays'), { recursive: true });
 for (const c of picked) {
@@ -129,8 +164,10 @@ for (const c of picked) {
   fs.copyFileSync(path.join(REPLAYS, c.uuid + '.ndjson.gz'), path.join(ROOT, 'replays', c.key + '.ndjson.gz'));
 }
 fs.writeFileSync(path.join(ROOT, 'caps.json'), JSON.stringify({
-  rules: { window_s: WINDOW_MS / 1000, od_radius_tiles: OD_RADIUS, min_zigzag: MIN_ZIGZAG, picked: PICK, seed: SEED,
-    games_read: done, caps_passing: found.length },
+  rules: { min_run_s: MIN_RUN_S, max_run_s: MAX_RUN_S, od_check_s: OD_CHECK_MS / 1000, od_radius_tiles: OD_RADIUS,
+    min_speed: MIN_SPEED, turn_low_pct: TURN_LOW, turn_high_pct: TURN_HIGH, turn_min: turnMin, turn_max: turnMax,
+    picked: PICK, seed: SEED, games_read: done, runs_against_od: found.length, runs_right_length: timed.length,
+    runs_passing: passing.length },
   caps: picked,
 }, null, 1));
 console.log(`picked ${picked.length}`);

@@ -29,7 +29,7 @@
 </div>
 <div id="caps-list"></div>
 <script>
-  const LEAD_MS = 10000; // the viewer starts this long before the cap
+  const LEAD_MS = 2000; // the viewer starts this long before the grab
   const clock = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const filters = { kind: 'defence-filter', season: 'season-filter', league: 'league-filter' };
   let caps = [];
@@ -48,10 +48,10 @@
       return !v || c[f] === v;
     }));
     for (const c of shown) {
-      const title = `${c.carrier} caps vs ${c.kind} - ${c.season} ${c.league} week ${c.week} ${c.game}, ${c.map}`;
+      const title = `${c.carrier}: grab to cap vs ${c.kind} - ${c.season} ${c.league} week ${c.week} ${c.game}, ${c.map}`;
       const a = document.createElement('a');
       a.className = 'cap-card';
-      a.href = `viewer/?replay=${c.key}&t=${Math.max(0, c.cap_ms - LEAD_MS)}&follow=${c.carrier_id}&title=${encodeURIComponent(title)}`;
+      a.href = `viewer/?replay=${c.key}&t=${Math.max(0, c.grab_ms - LEAD_MS)}&follow=${c.carrier_id}&route=${c.route_w},${c.route_h}&title=${encodeURIComponent(title)}`;
       const watch = document.createElement('span');
       watch.className = 'cap-watch';
       watch.textContent = 'Watch';
@@ -59,10 +59,10 @@
       teams.className = 'cap-teams';
       teams.textContent = `${c.team_a} vs ${c.team_b}`;
       const line1 = document.createElement('div');
-      line1.textContent = `${c.carrier} (${c.cap_team}) caps against ${c.kind}`;
+      line1.textContent = `${c.carrier} (${c.cap_team}) grabs and caps against ${c.kind} in ${Number(c.run_s).toFixed(1)} s`;
       const line2 = document.createElement('div');
       line2.className = 'cap-details';
-      line2.textContent = `${c.season} ${c.league}, week ${c.week} ${c.game} · ${c.map} · ${clock(c.game_clock_s)} into the game · zig-zag ${c.zigzag}`;
+      line2.textContent = `${c.season} ${c.league}, week ${c.week} ${c.game} · ${c.map} · grab ${clock(c.grab_clock_s)} into the game · turning ${c.turn_deg_per_s}°/s · ${c.jukes} jukes`;
       a.append(watch, teams, line1, line2);
       list.appendChild(a);
     }
@@ -73,11 +73,15 @@
     const rules = data.rules;
     caps = data.caps;
     document.getElementById('rules-text').textContent =
-      `${caps.length} caps picked at random (seed ${rules.seed}) from the ${rules.caps_passing} caps in ${rules.games_read} ` +
-      `comp replays that pass these rules, checked ${rules.window_s} seconds before the cap: the carrier already has the flag; ` +
-      `3 or 4 enemies are alive within ${rules.od_radius_tiles} tiles of the carrier's flag, or 2 are and the other 2 are dead; ` +
-      `and the carrier's path into the flag is at least ${rules.min_zigzag} times the straight-line distance (no straight lines). ` +
-      `"Zig-zag" is that ratio. Watch opens the replay ${LEAD_MS / 1000} seconds before the cap.`;
+      `Each one is a flag carrier's run from their grab to their cap, for following the path. ${caps.length} runs picked at ` +
+      `random (seed ${rules.seed}) from the ${rules.runs_passing} that pass these rules, out of ${rules.runs_against_od} runs ` +
+      `against OD in ${rules.games_read} comp replays. The run lasts ${rules.min_run_s} to ${rules.max_run_s} seconds and the ` +
+      `carrier holds the flag the whole time. ${rules.od_check_s} seconds before the cap (or at the grab, if later), 3 or 4 ` +
+      `enemies are alive within ${rules.od_radius_tiles} tiles of the carrier's flag, or 2 are and the other 2 are dead. ` +
+      `Turning (how much the carrier's direction changes, in degrees a second) is between the ${rules.turn_low_pct}th and ` +
+      `${rules.turn_high_pct}th percentile of runs of that length (${rules.turn_min} to ${rules.turn_max}): no plain ` +
+      `straight lines, nothing too zig-zaggy to follow. A juke is a full left/right or up/down reversal. ` +
+      `Watch opens the replay ${LEAD_MS / 1000} seconds before the grab, following the carrier.`;
     Object.keys(filters).forEach(fillFilter);
     show();
   });

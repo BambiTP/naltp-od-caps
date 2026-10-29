@@ -1,10 +1,12 @@
 // Loading cover, touch controls and follow / whole-map view for the TagPro replay page.
 // Address: ?replay=<key>&t=<ms to start at>&follow=<player id>&title=<text shown while loading>
+//   &route=<width>,<height> (tiles the carrier's run covers: phones start zoomed to fit it)
 // The cover stays up (sound off) until the replay is downloaded, the page's images are loaded and the
 // client has jumped to t; then it pauses there and waits for a tap on Play (which also lets phones play sound).
 (function () {
   var q = new URLSearchParams(location.search);
   var start = Number(q.get('t')) || 0, follow = Number(q.get('follow')) || 0, title = q.get('title') || '';
+  var route = (q.get('route') || '').split(',').map(Number), touch = window.matchMedia('(pointer: coarse)').matches;
   var $id = function (id) { return document.getElementById(id); };
   var cover = $id('od-loading'), status = $id('od-loading-status'), playButton = $id('od-play-button');
   var bar = $id('od-bar'), toggle = $id('od-bar-toggle'), playPause = $id('od-playpause-button');
@@ -22,16 +24,20 @@
     s.value = ms;
     window.jQuery(s).trigger('mouseup');
   }
+  // at zoom 1 the view is 32 x 20 tiles on any screen (the client scales the picture to fit the window)
   function fitZoom() {
-    var c = $id('viewport'), m = tagpro.map;
-    if (!c || !m) return 1;
-    return Math.max(1, 40 * m.length / c.width, 40 * m[0].length / c.height);
+    var m = tagpro.map;
+    return m ? Math.max(1, m.length / 32, m[0].length / 20) : 1;
+  }
+  function routeZoom() {
+    if (!(route[0] > 0 && route[1] > 0)) return 1;
+    return Math.min(fitZoom(), Math.max(0.6, route[0] / 32, route[1] / 20));
   }
   function setView(whole) {
     wholeMap = whole;
     tagpro.viewport.followPlayer = !whole;
     tagpro.viewport.centerLock = whole;
-    tagpro.zoom = whole ? fitZoom() : 1;
+    tagpro.zoom = whole ? fitZoom() : touch ? routeZoom() : 1;
     if (!whole && follow && tagpro.replayFollowPlayer) tagpro.replayFollowPlayer(follow);
     viewButton.textContent = whole ? 'Follow carrier' : 'Whole map';
   }
@@ -54,6 +60,7 @@
     if (!t.replayPaused) t.replayActions.playpause();
     t.sound = false;
     if (follow && t.replayFollowPlayer) t.replayFollowPlayer(follow);
+    if (touch) t.zoom = routeZoom();
     ready = true;
     status.textContent = 'Ready.';
     playButton.hidden = false;
