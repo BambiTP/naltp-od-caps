@@ -33,6 +33,7 @@
     autoFit = whole;
     tagpro.viewport.followPlayer = !whole;
     tagpro.viewport.centerLock = whole;
+    tagpro.viewport.overview = whole;
     tagpro.zoom = whole ? fitZoom() : 1;
     if (!whole && follow && tagpro.replayFollowPlayer) tagpro.replayFollowPlayer(follow);
     viewButton.textContent = whole ? 'Follow carrier' : 'Whole map';
@@ -81,6 +82,7 @@
     bar.hidden = false;
     toggle.hidden = false;
     if (tagpro.replayPaused) tagpro.replayActions.playpause();
+    setView(true);
   });
 
   var act = function (name) { return function () { if (ready) tagpro.replayActions[name](); }; };
@@ -106,7 +108,7 @@
     if (!ready) return;
     playPause.innerHTML = tagpro.replayPaused ? '&#9654;' : '&#10074;&#10074;';
     if (Number(speedSelect.value) !== tagpro.replaySpeed) speedSelect.value = String(tagpro.replaySpeed);
-    if (wholeMap) { tagpro.viewport.centerLock = true; tagpro.viewport.followPlayer = false; }
+    if (wholeMap) { tagpro.viewport.centerLock = true; tagpro.viewport.followPlayer = false; tagpro.viewport.overview = true; }
     if (autoFit) tagpro.zoom = fitZoom(); // stays fitted when the phone turns
   }, 250);
 })();

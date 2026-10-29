@@ -69,7 +69,7 @@
     if (!shown.length) list.textContent = 'No caps match.';
   }
 
-  fetch('caps.json').then(r => r.json()).then(data => {
+  fetch('caps.json', { cache: 'no-store' }).then(r => r.json()).then(data => {
     const rules = data.rules;
     caps = data.caps;
     document.getElementById('rules-text').textContent =

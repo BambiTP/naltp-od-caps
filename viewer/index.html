@@ -18,7 +18,7 @@
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/font-awesome.css">
         <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/style.css">
             <link rel="stylesheet" href="./R-62bb0909b74c-z/stylesheets/replay.css">
-            <link rel="stylesheet" href="./od-ui.css">
+            <link rel="stylesheet" href="./od-ui.css?v=4">
 
             <script src="./R-62bb0909b74c-z/compact/global-game.js"></script>
     <script type="text/javascript">
@@ -50,7 +50,7 @@
                         var m = typeof url === 'string' && url.match(/replays\/gameFile\?key=([0-9a-zA-Z_-]{16})/);
                         if (!m) return realFetch(url, opts);
                         var r = await realFetch('../replays/' + m[1] + '.ndjson.gz');
-                        if (!r.ok) return r;
+                        if (!r.ok) { alert('This replay is no longer on the site (the list was updated). Go back and reload the list.'); return r; }
                         var bytes = new Uint8Array(await r.arrayBuffer()), text;
                         if (bytes[0] === 0x1f && bytes[1] === 0x8b) // still gzipped (not undone by the browser)
                             text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
@@ -683,6 +683,6 @@
             rdt("init", "t2_vrwbckj1", { "optOut": false, "useDecimalCurrencyValues": true, "email": "", "externalId": "" });
             rdt("track", "ViewContent");
         </script>
-        <script src="./od-ui.js"></script>
+        <script src="./od-ui.js?v=4"></script>
     </body>
 </html>
